@@ -1,0 +1,14 @@
+<restart>
+Call pwd.
+Read the following files before doing anything else:
+  - progress.md        (current state, what was last completed)
+  - todo.md            (pending tasks and priorities)
+  - [your main script file(s)]
+
+Then run a quick self-check:
+  1. Summarize where we are in one paragraph
+  2. List the next 3 concrete tasks in priority order
+  3. Flag any unresolved decisions or open risks
+
+Do not write any code or suggest changes until I confirm the summary is accurate.
+</restart>

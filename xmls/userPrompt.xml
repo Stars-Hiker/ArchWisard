@@ -1,0 +1,34 @@
+[USER PROMPT — use this as your per-task scaffold]
+<task>
+[Action verb] [specific component or behavior] in the Arch install script.
+</task>
+
+<context>
+Project: Arch Linux install script in Bash + gum.
+Stage: Mid — core works, needs polish and edge cases.
+Must handle:
+  - BIOS and UEFI
+  - Multi-disk setups with 4+ existing OS partitions
+  - Dual and multi-boot (Windows, Linux, others)
+  - LUKS full-disk encryption
+  - LVM, BTRFS, ZFS
+  - Dynamic chroot script generation and execution
+  - DE install, dotfiles, post-install setup
+Goal: the most reliable, user-friendly, and beautiful Arch installer possible.
+</context>
+
+<constraints>
+- Stack: Bash + gum only. No new dependencies without explicit justification.
+- Format: All output as runnable Bash. No pseudocode.
+- Safety: Flag every destructive or irreversible operation before writing it.
+- Scope: Touch only what is asked. Read files before commenting on them.
+- UX: gum interactions must be clear, fast, and recoverable (user can go back).
+</constraints>
+
+<input>
+[Paste the relevant section of your script here, or describe the specific 
+problem / scenario you want solved.]
+</input>
+
+If anything is ambiguous or could go multiple ways, present the options 
+and tradeoffs before implementing. Do not guess.
