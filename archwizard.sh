@@ -126,19 +126,44 @@ _source_lib() {
     source "$path"
 }
 
-_source_lib ui
-_source_lib state
-_source_lib detect
-_source_lib disk
-_source_lib layout
-_source_lib storage
-_source_lib partition
-_source_lib format
-_source_lib base
-_source_lib chroot_gen
-#_source_lib bootloader
-#_source_lib desktop
-_source_lib postinstall
+_source_chroot() {
+    local name="$1"
+    local path="${SCRIPT_DIR}/chroot/${name}.sh"
+    if [[ ! -f "$path" ]]; then
+        printf '\033[1;31m[FATAL]\033[0m Cannot find chroot/%s.sh\n' "$name" >&2
+        exit 1
+    fi
+    # shellcheck source=/dev/null
+    source "$path"
+}
+
+_source_templates() {
+    local name="$1"
+    local path="${SCRIPT_DIR}/templates/${name}.sh"
+    if [[ ! -f "$path" ]]; then
+        printf '\033[1;31m[FATAL]\033[0m Cannot find templates/%s.sh\n' "$name" >&2
+        exit 1
+    fi
+    # shellcheck source=/dev/null
+    source "$path"
+}
+
+
+_source_lib ui           # 1 — wrappers + theme; no deps
+_source_lib state        # 2 — step machine, menu; needs ui
+_source_lib detect       # 3 — env detection, keyboard, shared helpers; needs ui
+_source_lib disk         # 4 — disk survey, OS probe, space planning; needs detect
+_source_lib storage      # 5 — storage stack wizard (step 3); needs ui
+_source_lib layout       # 6 — partition sizing (step 4); needs storage
+_source_lib identity     # 7 — steps 5-8 + summary gate; needs ui
+_source_lib partition    # 8 — destructive ops; needs detect (_refresh_partitions)
+_source_lib format       # 9 — mkfs, subvols, mount; needs partition globals
+_source_lib base         # 10 — pacstrap, fstab; needs format
+_source_lib chroot_gen   # 11 — serialize + deploy chroot; needs storage
+_source_chroot bootloader   # 12 — host-side EFI helpers; needs chroot_gen
+_source_chroot desktop      # 13 — dotfiles deploy; needs ui
+_source_chroot postinstall  # 14 — verify, cleanup, reboot; needs ui
+#_source_templates chroot_base # 15 - real bash chroot script (not heredoc)
 
 # =============================================================================
 #  ENTRY POINT

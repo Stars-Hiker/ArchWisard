@@ -325,17 +325,32 @@ function _step_run_8() {
 
 function _exec_install() {
     # inputs: all globals from steps 1-8 / side-effects: WRITES TO DISK ⚠
+
+    # Phase 10 — partition execution
     replace_partition
     resize_partitions
     create_partitions
+
+    # Phase 11 — format + mount
     setup_luks
     format_filesystems
     create_subvolumes
     mount_filesystems
+
+    # Phase 12 — base install
     setup_mirrors
     install_base
+
+    # Phase 13 — chroot configuration
+    bootloader_pre_chroot       # EFI guard + Secure Boot prep (host-side)
     generate_chroot_script
     run_chroot
+    bootloader_post_chroot      # Fallback EFI binary + NVRAM check (host-side)
+
+    # Phase 14 — dotfiles (optional, /mnt still mounted)
+    deploy_dotfiles
+
+    # Phase 15 — verify + done
     verify_installation
     finish
 }

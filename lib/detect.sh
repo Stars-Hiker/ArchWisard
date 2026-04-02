@@ -105,6 +105,25 @@ function probe_os_from_part() {
     return 0
 }
 
+# _refresh_partitions DISK — inform kernel of new partition table
+# Call DIRECTLY — never via run()/eval (shell function is lost in eval subshell)
+# Call ONCE after batching all sgdisk -d deletions, not after each individual one
+function _refresh_partitions() {
+    # inputs: disk_path / side-effects: kernel partition table updated
+    local disk="$1" attempt
+    for attempt in 1 2 3; do
+        if partprobe "$disk" 2>/dev/null; then
+            sleep 1; ok "Kernel partition table updated"; return 0
+        fi
+        warn "partprobe attempt ${attempt}/3 — retrying in 2s…"; sleep 2
+    done
+    if partx -u "$disk" 2>/dev/null; then
+        sleep 1; ok "Kernel partition table updated via partx"; return 0
+    fi
+    udevadm settle 2>/dev/null || true; sleep 3
+    warn "Could not confirm kernel saw partition changes — continuing."
+}
+
 # _detect_cpu → sets CPU_VENDOR
 function _detect_cpu() {
     # inputs: /proc/cpuinfo / outputs: CPU_VENDOR global

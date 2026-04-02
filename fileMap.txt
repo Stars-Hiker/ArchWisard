@@ -1,0 +1,21 @@
+archwizard.sh              221 lines  — entry point, globals, source order
+lib/
+  ui.sh                    344        — all gum wrappers + NO_GUM fallbacks
+  state.sh                 663        — step machine, menu, _exec_install
+  detect.sh                334        — env detection, keyboard, shared helpers
+  disk.sh                  845        — disk survey, OS probe, space planning
+  storage.sh               274        — storage stack wizard (new step 3)
+  layout.sh                409        — partition sizing, swap, layout preview
+  identity.sh              532        — system ID, users, kernel/boot, DE, summary
+  partition.sh             335        — replace/resize/create partitions, LUKS
+  format.sh                211        — mkfs, btrfs subvols, mount tree
+  base.sh                  120        — pacstrap, fstab, mirrorlist
+  chroot_gen.sh            292        — serialize state, deploy template, run chroot
+  bootloader.sh            180        — EFI guard, fallback copy, NVRAM check
+  desktop.sh               161        — dotfiles deploy (git/chezmoi/local)
+  postinstall.sh           167        — verification, cleanup, reboot
+templates/
+  chroot_base.sh           465        — real bash chroot script (not heredoc)
+CLAUDE.md                  411        — canonical reference
+                          ───────
+Total                     5,964 lines  16 .sh files  100% syntax-clean
