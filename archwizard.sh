@@ -44,7 +44,7 @@ ROOT_PART=""
 ROOT_PART_MAPPED=""
 HOME_PART=""
 SWAP_PART=""
-EFI_SIZE_MB=512
+EFI_SIZE_MB=1024
 ROOT_SIZE=""
 HOME_SIZE=""
 SEP_HOME=false
@@ -83,7 +83,7 @@ USER_PASSWORD=""         # NEVER in argv
 ROOT_PASSWORD=""         # NEVER in argv
 TIMEZONE="UTC"
 LOCALE="en_US.UTF-8"
-KEYMAP="us"
+KEYMAP="fr-latin9"
 
 # Software
 KERNEL="linux"

@@ -3,7 +3,18 @@
 #  lib/ui.sh — All UI wrappers + gum theme constants
 #  Architecture rule: ZERO logic here. Pure presentation.
 #  NO_GUM=true  → every function falls back to plain read/printf.
-#  Gum failures → every gum call has a silent || fallback.
+#
+#  THE TEE PIPE PROBLEM:
+#    archwizard.sh runs:  exec > >(tee -a "$LOG_FILE") 2>&1
+#    This redirects stdout+stderr through tee for logging.
+#    gum detects stdout is not a tty and either renders nothing (interactive)
+#    or strips ANSI colors (display). Both break the UI completely.
+#
+#  FIX — two patterns used throughout:
+#    Display  (section/ok/warn/info):  write to /dev/tty when stdout is piped
+#    Interactive (confirm/choose/input): use </dev/tty 2>/dev/tty so gum gets
+#      a real terminal for both rendering (stderr) and keyboard input (stdin),
+#      while stdout is still captured by $() for the selection result.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -18,33 +29,31 @@ readonly GUM_C_DIM=242
 readonly GUM_C_ACCENT=141
 readonly GUM_WIDTH=70
 
-# _clr COLOR "text"
-# Inline ANSI 256-colour. Safe inside gum --title/--header strings;
-# nested $(gum style) crashes when stdout is piped — this never does.
-function _clr() {
-    # inputs: color_number text / outputs: ANSI-wrapped string
-    printf '\033[38;5;%sm%s\033[0m' "$1" "$2"
+# _clr COLOR "text" — inline ANSI 256-colour; safe inside gum --title strings
+function _clr() { printf '\033[38;5;%sm%s\033[0m' "$1" "$2"; }
+
+# _tty_out — fd/path for display output; /dev/tty when stdout is piped, else 1
+function _tty_out() {
+    if [[ ! -t 1 ]] && [[ -w /dev/tty ]]; then echo "/dev/tty"
+    else echo "1"; fi
 }
 
 # -----------------------------------------------------------------------------
-#  Internal dispatcher — shared logic for ok/warn/info/error
+#  Display wrappers — write to /dev/tty when piped so tee doesn't swallow color
 # -----------------------------------------------------------------------------
+
 function _ui_msg() {
-    # inputs: color icon message / outputs: styled line to stdout (or stderr)
     local color="$1" icon="$2"; shift 2
     if [[ "${NO_GUM:-false}" == true ]]; then
         printf '%s %s\n' "$icon" "$*"
         return 0
     fi
-    gum style --foreground "$color" "${icon} $*" 2>/dev/null \
-        || printf '%s %s\n' "$icon" "$*"
+    local out; out=$(_tty_out)
+    gum style --foreground "$color" "${icon} $*" > "$out" 2>/dev/null \
+        || printf '%s %s\n' "$icon" "$*" > "$out"
 }
 
-# -----------------------------------------------------------------------------
-#  Status printers
-# -----------------------------------------------------------------------------
 function log() {
-    # inputs: message / side-effects: stdout + LOG_FILE
     local m="[$(date '+%H:%M:%S')] $*"
     echo "$m"
     echo "$m" >> "${LOG_FILE:-/tmp/archwizard.log}"
@@ -57,10 +66,10 @@ function error() { _ui_msg "$GUM_C_ERR"  " ✗ " "$@" >&2; }
 function blank() { echo ""; }
 
 function section() {
-    # inputs: title / outputs: section header
     echo ""
+    local out; out=$(_tty_out)
     if [[ "${NO_GUM:-false}" == true ]]; then
-        printf '\033[1;35m══  %s  ══\033[0m\n\n' "$*"
+        printf '\033[1;35m══  %s  ══\033[0m\n\n' "$*" > "$out"
         return 0
     fi
     gum style \
@@ -70,20 +79,19 @@ function section() {
         --border            normal \
         --padding           "0 1" \
         --width             "$GUM_WIDTH" \
-        "  ◆  $*" 2>/dev/null \
-        || printf '\033[1;35m══  %s  ══\033[0m\n' "$*"
+        "  ◆  $*" > "$out" 2>/dev/null \
+        || printf '\033[1;35m══  %s  ══\033[0m\n' "$*" > "$out"
     echo ""
 }
 
 function die() {
-    # inputs: message / side-effects: fatal box to stderr, exits 1
-    # Always goes to stderr so the tee pipe on stdout doesn't interfere.
     echo "" >&2
     if [[ "${NO_GUM:-false}" == true ]]; then
         printf '\033[1;31m[FATAL]\033[0m %s\n' "$*" >&2
         printf '        Log: %s\n\n' "${LOG_FILE:-/tmp/archwizard.log}" >&2
         exit 1
     fi
+    local out; out=$(_tty_out)
     gum style \
         --foreground        "$GUM_C_ERR" \
         --border-foreground "$GUM_C_ERR" \
@@ -91,23 +99,20 @@ function die() {
         --padding           "0 2" \
         --width             "$GUM_WIDTH" \
         "FATAL ERROR" "" "$*" "" \
-        "Log: ${LOG_FILE:-/tmp/archwizard.log}" 2>/dev/null \
+        "Log: ${LOG_FILE:-/tmp/archwizard.log}" > "$out" 2>/dev/null \
         || printf '\033[1;31m[FATAL]\033[0m %s\n' "$*" >&2
     echo "" >&2
     exit 1
 }
 
-# -----------------------------------------------------------------------------
-#  Banner
-# -----------------------------------------------------------------------------
 function show_banner() {
-    # inputs: none / outputs: banner to stdout
     if [[ "${NO_GUM:-false}" == true ]]; then
         printf '\n\033[1;35m  ArchWizard 7.0  —  Arch Linux Installer\033[0m\n'
         printf '\033[2m  log: %s\033[0m\n\n' "${LOG_FILE:-/tmp/archwizard.log}"
         return 0
     fi
     clear
+    local out; out=$(_tty_out)
     gum style \
         --foreground        "$GUM_C_TITLE" \
         --bold \
@@ -115,69 +120,64 @@ function show_banner() {
         --border-foreground "$GUM_C_TITLE" \
         --padding           "1 4" \
         --width             "$GUM_WIDTH" \
-        "ARCH WIZARD" \
-        "v7.0.0" \
-        "" \
-        "The most reliable Arch Linux installer" \
-        "" \
-        "log: ${LOG_FILE:-/tmp/archwizard.log}" 2>/dev/null \
-        || printf '\033[1;35m  ARCH WIZARD  v7.0.0\033[0m\n'
+        "ARCH WIZARD" "v7.0.0" "" \
+        "The most reliable Arch Linux installer" "" \
+        "log: ${LOG_FILE:-/tmp/archwizard.log}" > "$out" 2>/dev/null \
+        || printf '\033[1;35m  ARCH WIZARD  v7.0.0\033[0m\n' > "$out"
     echo ""
 }
 
 # -----------------------------------------------------------------------------
-#  Interactive wrappers — all fall back to plain bash when NO_GUM=true
+#  Interactive wrappers — all use </dev/tty 2>/dev/tty so gum gets a real tty
+#  even when the outer exec > >(tee) has hijacked stdout+stderr.
+#  Pattern: result=$(gum choose ... </dev/tty 2>/dev/tty)
+#    stdin  </dev/tty  → gum reads keyboard from real terminal
+#    stderr 2>/dev/tty → gum renders its TUI to real terminal
+#    stdout            → captured by $() as the final selection
 # -----------------------------------------------------------------------------
 
-# confirm_gum "Question?" → returns 0 (yes) or 1 (no)
 function confirm_gum() {
-    # inputs: prompt string / outputs: exit code 0=yes 1=no
     if [[ "${NO_GUM:-false}" == true ]]; then
         local ans
-        printf ' ? %s [y/N]: ' "$*" >&2
-        read -r ans
+        printf ' ? %s [y/N]: ' "$*" >/dev/tty
+        read -r ans </dev/tty
         [[ "${ans,,}" == "y" ]]
         return
     fi
     gum confirm \
-        --prompt.foreground    "$GUM_C_ACCENT" \
-        --selected.background  "$GUM_C_TITLE" \
+        --prompt.foreground     "$GUM_C_ACCENT" \
+        --selected.background   "$GUM_C_TITLE" \
         --unselected.foreground "$GUM_C_DIM" \
-        "$@"
+        "$@" </dev/tty 2>/dev/tty
 }
 
-# input_gum "Header" "placeholder" → echoes trimmed input to stdout
 function input_gum() {
-    # inputs: header placeholder / outputs: user string to stdout
     local header="${1:-Input}" placeholder="${2:-}"
     if [[ "${NO_GUM:-false}" == true ]]; then
         local val
-        printf ' › %s%s: ' "$header" "${placeholder:+ [$placeholder]}" >&2
-        read -r val
+        printf ' › %s%s: ' "$header" "${placeholder:+ [$placeholder]}" >/dev/tty
+        read -r val </dev/tty
         echo "${val:-$placeholder}"
         return 0
     fi
     gum input \
-        --prompt          " › " \
+        --prompt            " › " \
         --prompt.foreground "$GUM_C_ACCENT" \
-        --placeholder     "$placeholder" \
-        --header          "$header" \
+        --placeholder       "$placeholder" \
+        --header            "$header" \
         --header.foreground "$GUM_C_INFO" \
-        --width           "$GUM_WIDTH"
+        --width             "$GUM_WIDTH" \
+        </dev/tty 2>/dev/tty
 }
 
-# password_gum "Label" → echoes confirmed password to stdout; loops until match
 function password_gum() {
-    # inputs: label / outputs: password to stdout
     local label="${1:-Password}"
     if [[ "${NO_GUM:-false}" == true ]]; then
         local p1 p2
         while true; do
-            printf ' › %s: ' "$label"       >&2; read -rs p1; echo >&2
-            printf ' › Confirm %s: ' "$label" >&2; read -rs p2; echo >&2
-            if [[ "$p1" == "$p2" && -n "$p1" ]]; then
-                echo "$p1"; return 0
-            fi
+            printf ' › %s: ' "$label"         >/dev/tty; read -rs p1 </dev/tty; echo >/dev/tty
+            printf ' › Confirm %s: ' "$label" >/dev/tty; read -rs p2 </dev/tty; echo >/dev/tty
+            if [[ "$p1" == "$p2" && -n "$p1" ]]; then echo "$p1"; return 0; fi
             warn "Passwords don't match or are empty — try again."
         done
     fi
@@ -186,53 +186,42 @@ function password_gum() {
         pass1=$(gum input --password \
             --prompt " › " --prompt.foreground "$GUM_C_ACCENT" \
             --header "$label" --header.foreground "$GUM_C_INFO" \
-            --width "$GUM_WIDTH")
+            --width "$GUM_WIDTH" </dev/tty 2>/dev/tty)
         pass2=$(gum input --password \
             --prompt " › " --prompt.foreground "$GUM_C_ACCENT" \
             --header "Confirm: $label" --header.foreground "$GUM_C_INFO" \
-            --width "$GUM_WIDTH")
-        if [[ "$pass1" == "$pass2" && -n "$pass1" ]]; then
-            echo "$pass1"; return 0
-        fi
+            --width "$GUM_WIDTH" </dev/tty 2>/dev/tty)
+        if [[ "$pass1" == "$pass2" && -n "$pass1" ]]; then echo "$pass1"; return 0; fi
         warn "Passwords don't match or are empty — try again."
     done
 }
 
-# choose_one "default" item1 item2 … → echoes selection to stdout
-# If user presses Esc / q in gum, echoes BACK sentinel (see state.sh).
-# Returns 0 always; caller checks if result == "$BACK".
 function choose_one() {
-    # inputs: default items... / outputs: selected item to stdout
+    # First arg is default; rest are items. Returns selected item on stdout.
     local default="$1"; shift
 
     if [[ "${NO_GUM:-false}" == true ]]; then
         local items=("$@") i=1
-        echo "" >&2
+        echo "" >/dev/tty
         for item in "${items[@]}"; do
-            # Skip visual separators
-            if [[ "$item" == ─* ]]; then
-                printf '  ──\n' >&2
-            else
-                printf '  %d) %s\n' "$i" "$item" >&2
-            fi
+            if [[ "$item" == ─* ]]; then printf '  ──\n' >/dev/tty
+            else printf '  %d) %s\n' "$i" "$item" >/dev/tty; fi
             i=$(( i + 1 ))
         done
         local choice
         while true; do
-            printf ' › Choose [1-%d]: ' "${#items[@]}" >&2
-            read -r choice
+            printf ' › Choose [1-%d]: ' "${#items[@]}" >/dev/tty
+            read -r choice </dev/tty
             if [[ "$choice" =~ ^[0-9]+$ ]] \
                && (( choice >= 1 && choice <= ${#items[@]} )); then
-                echo "${items[$(( choice - 1 ))]}"
-                return 0
+                echo "${items[$(( choice - 1 ))]}"; return 0
             fi
             warn "Enter a number between 1 and ${#items[@]}."
         done
     fi
 
-    # Check whether default is actually in the list before using --selected.
-    # gum choose --selected "" exits non-zero — crash pattern #4.
-    local match=false
+    # crash pattern #4: never pass --selected "" to gum choose
+    local match=false item
     for item in "$@"; do
         if [[ "$item" == "$default" ]]; then match=true; break; fi
     done
@@ -244,38 +233,34 @@ function choose_one() {
             --selected.foreground "$GUM_C_TITLE" \
             --cursor.foreground   "$GUM_C_ACCENT" \
             --height              12 \
-            "$@" 2>/dev/null) || true
+            "$@" </dev/tty 2>/dev/tty) || true
     else
         result=$(gum choose \
             --selected.foreground "$GUM_C_TITLE" \
             --cursor.foreground   "$GUM_C_ACCENT" \
             --height              12 \
-            "$@" 2>/dev/null) || true
+            "$@" </dev/tty 2>/dev/tty) || true
     fi
 
-    # Empty result means user pressed Esc/q — treat as back.
-    if [[ -z "$result" ]]; then
-        echo "${BACK:-← Back}"
-        return 0
-    fi
+    # Empty = user pressed Esc/q — treat as back
+    if [[ -z "$result" ]]; then echo "${BACK:-← Back}"; return 0; fi
     echo "$result"
 }
 
-# choose_many "defaults_csv" item1 item2 … → one selected item per line
 function choose_many() {
-    # inputs: comma-separated defaults items... / outputs: selections to stdout
     local defaults="$1"; shift
 
     if [[ "${NO_GUM:-false}" == true ]]; then
         local items=("$@") i=1
-        echo "" >&2
+        echo "" >/dev/tty
         for item in "${items[@]}"; do
-            printf '  %d) %s\n' "$i" "$item" >&2
+            printf '  %d) %s\n' "$i" "$item" >/dev/tty
             i=$(( i + 1 ))
         done
         local raw
-        printf ' › Space-separated numbers (e.g. 1 3): ' >&2
-        read -r raw
+        printf ' › Space-separated numbers (e.g. 1 3): ' >/dev/tty
+        read -r raw </dev/tty
+        local n
         for n in $raw; do
             if [[ "$n" =~ ^[0-9]+$ ]] && (( n >= 1 && n <= ${#items[@]} )); then
                 echo "${items[$(( n - 1 ))]}"
@@ -289,32 +274,25 @@ function choose_many() {
         --selected.foreground "$GUM_C_TITLE" \
         --cursor.foreground   "$GUM_C_ACCENT" \
         --height              14 \
-        "$@" 2>/dev/null || true
+        "$@" </dev/tty 2>/dev/tty || true
 }
 
 # -----------------------------------------------------------------------------
 #  Command execution wrappers
 # -----------------------------------------------------------------------------
 
-# run "cmd …" — wraps ALL destructive commands; dry-run safe
-# Uses eval "$@" not eval "$*" — preserves argument boundaries.
 function run() {
-    # inputs: command string(s) / side-effects: executes unless dry-run
     if [[ "${DRY_RUN:-false}" == true ]]; then
-        _ui_msg "$GUM_C_DIM" "[dry]" "$*"
-        return 0
+        _ui_msg "$GUM_C_DIM" "[dry]" "$*"; return 0
     fi
     log "CMD: $*"
     eval "$@" 2>&1 | tee -a "${LOG_FILE:-/tmp/archwizard.log}"
 }
 
-# run_spin "Label" "cmd …" — spinner for slow ops; dry-run + NO_GUM safe
 function run_spin() {
-    # inputs: label command_string / side-effects: executes command
     local label="$1"; shift
     if [[ "${DRY_RUN:-false}" == true ]]; then
-        _ui_msg "$GUM_C_DIM" "[dry]" "$*"
-        return 0
+        _ui_msg "$GUM_C_DIM" "[dry]" "$*"; return 0
     fi
     log "CMD: $*"
     if [[ "${NO_GUM:-false}" == true ]]; then
@@ -322,22 +300,20 @@ function run_spin() {
         eval "$@" 2>&1 | tee -a "${LOG_FILE:-/tmp/archwizard.log}"
         return 0
     fi
-    # gum spin --title must not contain $(gum style) — crash pattern #3.
+    # </dev/tty 2>/dev/tty: spinner renders to terminal; stdout captured as normal
+    # crash pattern #3: no $(gum style) inside --title
     gum spin \
         --spinner dot \
         --title   " $label" \
         -- bash -c "$* 2>&1 | tee -a \"${LOG_FILE:-/tmp/archwizard.log}\"" \
-        2>/dev/null \
+        </dev/tty 2>/dev/tty \
         || { info "$label"; eval "$@" 2>&1 | tee -a "${LOG_FILE:-/tmp/archwizard.log}"; }
 }
 
-# run_interactive "cmd …" — parted resize ONLY; restores /dev/tty
-# Required because the top-level exec > >(tee …) breaks interactive read().
 function run_interactive() {
-    # inputs: command string(s) / side-effects: executes with tty restored
+    # parted resize ONLY — restores full /dev/tty for interactive prompts
     if [[ "${DRY_RUN:-false}" == true ]]; then
-        _ui_msg "$GUM_C_DIM" "[dry]" "$*"
-        return 0
+        _ui_msg "$GUM_C_DIM" "[dry]" "$*"; return 0
     fi
     log "CMD (interactive): $*"
     eval "$@" </dev/tty >/dev/tty 2>/dev/tty

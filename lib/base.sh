@@ -81,12 +81,12 @@ function setup_mirrors() {
         if [[ -n "$_c" ]]; then country_args+="--country \"${_c}\" "; fi
     done
 
-    run_spin "Ranking mirrors (${REFLECTOR_COUNTRIES})…" \
-        "reflector ${country_args}--protocol ${REFLECTOR_PROTOCOL} \
-         --age ${REFLECTOR_AGE} --latest 20 \
-         --number ${REFLECTOR_NUMBER} --sort rate \
-         --save /etc/pacman.d/mirrorlist"
-    ok "Mirrorlist updated"
+    # Non-fatal: keep existing mirrorlist if no mirror matches the filter
+    if ! eval "reflector ${country_args}--protocol ${REFLECTOR_PROTOCOL}          --age ${REFLECTOR_AGE:-24}          --connection-timeout 5          --latest 20          --number ${REFLECTOR_NUMBER}          --sort rate          --save /etc/pacman.d/mirrorlist" 2>/dev/null; then
+        warn "reflector found no mirrors — using default mirrorlist for pacstrap."
+    else
+        ok "Mirrorlist updated"
+    fi
 }
 
 # =============================================================================
