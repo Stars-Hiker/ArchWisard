@@ -163,7 +163,7 @@ _source_lib chroot_gen   # 11 — serialize + deploy chroot; needs storage
 _source_chroot bootloader   # 12 — host-side EFI helpers; needs chroot_gen
 _source_chroot desktop      # 13 — dotfiles deploy; needs ui
 _source_chroot postinstall  # 14 — verify, cleanup, reboot; needs ui
-#_source_templates chroot_base # 15 - real bash chroot script (not heredoc)
+_source_templates chroot_base # 15 - real bash chroot script (not heredoc)
 
 # =============================================================================
 #  ENTRY POINT
