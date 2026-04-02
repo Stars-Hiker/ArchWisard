@@ -443,61 +443,114 @@ function main_menu() {
         local choice
         choice=$(choose_one "" "${entries[@]}")
 
+        local _ran_step=0
         case "$choice" in
             *"Step 1"*)
-                _step_run_1
-                ;;
+                _step_run_1; _ran_step=1 ;;
             *"Step 2"*)
-                _step_run_2
-                ;;
+                _step_run_2; _ran_step=2 ;;
             *"Step 3"*)
                 if ! _step_prereq 3; then
                     warn "Complete Step 2 (disk selection) first."
                     _pause_for_menu
                     continue
                 fi
-                _step_run_3
-                ;;
+                _step_run_3; _ran_step=3 ;;
             *"Step 4"*)
                 if ! _step_prereq 4; then
                     warn "Complete Step 3 (storage stack) first."
                     _pause_for_menu
                     continue
                 fi
-                _step_run_4
-                ;;
-            *"Step 5"*) _step_run_5 ;;
-            *"Step 6"*) _step_run_6 ;;
-            *"Step 7"*) _step_run_7 ;;
-            *"Step 8"*) _step_run_8 ;;
+                _step_run_4; _ran_step=4 ;;
+            *"Step 5"*) _step_run_5; _ran_step=5 ;;
+            *"Step 6"*) _step_run_6; _ran_step=6 ;;
+            *"Step 7"*) _step_run_7; _ran_step=7 ;;
+            *"Step 8"*) _step_run_8; _ran_step=8 ;;
             *"Run wizard"*)
-                _linear_run
-                ;;
+                _linear_run ;;
             *"Quit"*|"─"*|"$BACK")
                 blank
                 info "Quit — no changes made."
-                exit 0
-                ;;
+                exit 0 ;;
         esac
 
-        _pause_for_menu
+        if (( _ran_step > 0 )); then
+            _after_step_prompt "$_ran_step"
+        fi
     done
 }
 
-# _pause_for_menu — brief pause before redrawing menu
+# =============================================================================
+#  _after_step_prompt — post-step navigation offered by main_menu
+#  Presents "next step" and/or "summary & install", loops until user picks menu.
+# =============================================================================
+
+function _after_step_prompt() {
+    # inputs: step_number_just_run / side-effects: may run subsequent step(s)
+    local current="$1"
+
+    while true; do
+        local next=$(( current + 1 ))
+        blank
+
+        local opts=()
+
+        # Offer next step when prereqs are met
+        if (( next <= 8 )); then
+            local prereq_ok=true
+            if (( next == 3 )) && ! _step_prereq 3; then prereq_ok=false; fi
+            if (( next == 4 )) && ! _step_prereq 4; then prereq_ok=false; fi
+            if [[ "$prereq_ok" == true ]]; then
+                opts+=("  ►  Step ${next} — $(_step_desc "$next")")
+            fi
+        fi
+
+        # After step 8, offer the summary gate
+        if (( current == 8 )); then
+            opts+=("  ●  Review summary & install")
+        fi
+
+        opts+=("  ←  Main menu")
+
+        local choice
+        choice=$(choose_one "${opts[0]}" "${opts[@]}")
+
+        if [[ "$choice" == *"Step ${next}"* ]]; then
+            "_step_run_${next}"
+            # Advance only when the step was actually completed; back-out → menu
+            if _step_done "$next"; then
+                current=$next
+            else
+                return 0
+            fi
+        elif [[ "$choice" == *"Review summary"* ]]; then
+            save_config
+            if show_summary; then
+                _exec_install
+            fi
+            return 0
+        else
+            return 0  # "Main menu"
+        fi
+    done
+}
+
+# _pause_for_menu — brief pause before redrawing menu (prereq-fail path only)
 function _pause_for_menu() {
-    # inputs: none / side-effects: waits for keypress
+    # inputs: none / side-effects: waits for keypress on /dev/tty
     blank
     if [[ "${NO_GUM:-false}" == true ]]; then
-        printf ' › Press Enter to return to menu... ' >&2
-        read -r _
+        printf ' › Press Enter to return to menu... ' >/dev/tty
+        read -r _ </dev/tty
         return 0
     fi
-    gum confirm \
-        --affirmative       "Back to menu" \
-        --negative          "" \
-        --prompt.foreground "$GUM_C_DIM" \
-        "  Press Enter to return to menu" 2>/dev/null || true
+    # gum must have </dev/tty (keyboard) and 2>/dev/tty (rendering).
+    # stdout is discarded — we only need the keypress, not the selection.
+    gum choose \
+        --cursor.foreground "$GUM_C_DIM" \
+        --height            3 \
+        "  ←  Back to main menu" </dev/tty 2>/dev/tty >/dev/null || true
 }
 
 # =============================================================================

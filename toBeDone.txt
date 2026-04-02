@@ -1,10 +1,10 @@
-- bash archwizard.sh
-/home/nimrode/Documents/scripts/ArchWisard/templates/chroot_base.sh: ligne 10: /arch_install_vars.sh: Aucun fichier ou dossier de ce nom
-
-- why step 3 and step 8 appears validated with a green v on script boot?
-
-- there is still a bug with gum in menu selection at the end of each step. there in no menu to choose from. i would also like the possibility to go directly to next step, not just go back to main menu
-
 - i would like to be able to choose the zram swapp size between % and Gb. i would also the script to give a suggestion based on the system ram size.
 
 - if two or more are already installed on /dev/vda : one on vda2 and one on vda3. I got asked if i wanna keep vda2 then vda3 as it should. But if i wanna keep vda2 and erase vda3 . it want to erase all vda. entire disk will be wiped. after that it crashes at "btrfs subvolumes": error: could not create subvolume: file exist
+
+- i would like to be able to choose to install multiple kernel at once. like it's being done for desktop instalation
+
+- there has been a partprob error at the begening of the instalation on a few occasion
+
+-I want the script to give the possibility to install git - gum - archlinux-keyring at the begening of the script as they are required further on
+

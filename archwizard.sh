@@ -63,7 +63,7 @@ EXISTING_LINUX=false
 EXISTING_SYSTEMS=()
 
 # Storage stack
-STORAGE_STACK="plain"    # plain | luks | lvm | luks_lvm | btrfs | luks_btrfs | zfs
+STORAGE_STACK=""         # plain | luks | lvm | luks_lvm | btrfs | luks_btrfs | zfs
 ROOT_FS="btrfs"
 HOME_FS="btrfs"
 SWAP_TYPE="zram"
@@ -103,7 +103,7 @@ USE_AMD_VULKAN=false
 USE_BLUETOOTH=false
 USE_CUPS=false
 USE_SNAPPER=false
-FIREWALL="none"
+FIREWALL=""              # nftables | ufw | none
 
 # Step state — owned by lib/state.sh
 STEP=1
@@ -137,17 +137,6 @@ _source_chroot() {
     source "$path"
 }
 
-_source_templates() {
-    local name="$1"
-    local path="${SCRIPT_DIR}/templates/${name}.sh"
-    if [[ ! -f "$path" ]]; then
-        printf '\033[1;31m[FATAL]\033[0m Cannot find templates/%s.sh\n' "$name" >&2
-        exit 1
-    fi
-    # shellcheck source=/dev/null
-    source "$path"
-}
-
 
 _source_lib ui           # 1 — wrappers + theme; no deps
 _source_lib state        # 2 — step machine, menu; needs ui
@@ -163,7 +152,8 @@ _source_lib chroot_gen   # 11 — serialize + deploy chroot; needs storage
 _source_chroot bootloader   # 12 — host-side EFI helpers; needs chroot_gen
 _source_chroot desktop      # 13 — dotfiles deploy; needs ui
 _source_chroot postinstall  # 14 — verify, cleanup, reboot; needs ui
-_source_templates chroot_base # 15 - real bash chroot script (not heredoc)
+# templates/chroot_base.sh is NOT sourced here — it is a chroot-only script.
+# chroot_gen.sh::generate_chroot_script() copies it to /mnt at install time.
 
 # =============================================================================
 #  ENTRY POINT
