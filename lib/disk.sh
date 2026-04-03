@@ -411,35 +411,52 @@ function select_disks() {
             done
             blank
 
-            local _any_kept=false
-            for entry in "${_guard_found[@]}"; do
-                _en="${entry%%|*}"
-                _ep="${entry##*|}"
-                _es=$(lsblk -dno SIZE "$_ep" 2>/dev/null || echo "?")
-                blank
-                info "[${_en}]  ${_ep} (${_es})"
-                if confirm_gum "Keep ${_en}? (No = available for deletion/reuse)"; then
-                    EXISTING_SYSTEMS+=("$_en")
-                    PROTECTED_PARTS+=("$_ep")
-                    if echo "$_en" | grep -qi "windows"; then
-                        EXISTING_WINDOWS=true
-                    else
-                        EXISTING_LINUX=true
-                    fi
-                    ok "${_en} → PRESERVED"
-                    _any_kept=true
-                else
-                    warn "${_en} (${_ep}) → available for deletion or reuse"
-                fi
-            done
+        local _any_kept=false
+        local _discarded_parts=()   # partitions user explicitly said "don't keep"
+        local entry _en _ep _es
+        for entry in "${_guard_found[@]}"; do
+            _en="${entry%%|*}"
+            _ep="${entry##*|}"
+            _es=$(lsblk -dno SIZE "$_ep" 2>/dev/null || echo "?")
             blank
+            info "[${_en}]  ${_ep} (${_es})"
+            if confirm_gum "Keep ${_en}? (No = available for deletion/reuse)"; then
+                EXISTING_SYSTEMS+=("$_en")
+                PROTECTED_PARTS+=("$_ep")
+                if echo "$_en" | grep -qi "windows"; then
+                    EXISTING_WINDOWS=true
+                else
+                    EXISTING_LINUX=true
+                fi
+                ok "${_en} → PRESERVED"
+                _any_kept=true
+            else
+                warn "${_en} (${_ep}) → will be DELETED"
+                _discarded_parts+=("$_ep")
+            fi
+        done
+        blank
 
-            if [[ "$_any_kept" == true ]]; then
-                DUAL_BOOT=true
-                local _sys_str
-                _sys_str=$(IFS=', '; echo "${EXISTING_SYSTEMS[*]}")
-                ok "Multi-boot — preserving: ${_sys_str}"
-                _check_and_plan_space "$DISK_ROOT"
+        if [[ "$_any_kept" == true ]]; then
+            DUAL_BOOT=true
+            local _sys_str
+            _sys_str=$(IFS=', '; echo "${EXISTING_SYSTEMS[*]}")
+            ok "Multi-boot — preserving: ${_sys_str}"
+
+            # Queue explicitly discarded partitions BEFORE space analysis so
+            # _check_and_plan_space knows about them and won't re-detect them.
+            if [[ ${#_discarded_parts[@]} -gt 0 ]]; then
+                REPLACE_PARTS_ALL=("${_discarded_parts[@]}")
+                REPLACE_PART="${_discarded_parts[0]}"
+                local _dp _dg _total_freed=0
+                for _dp in "${_discarded_parts[@]}"; do
+                    _dg=$(( $(blockdev --getsize64 "$_dp" 2>/dev/null || echo 0) / 1073741824 ))
+                    _total_freed=$(( _total_freed + _dg ))
+                done
+                info "Explicit deletion plan: ${_discarded_parts[*]}  (${_total_freed} GB freed)"
+            fi
+
+            _check_and_plan_space "$DISK_ROOT"
             else
                 blank
                 if [[ "${NO_GUM:-false}" == false ]]; then
@@ -566,6 +583,13 @@ function _check_and_plan_space() {
     # Case 1: enough unallocated space already
     if (( free_gb >= NEEDED_GB )); then
         ok "Sufficient unallocated space (${free_gb} GB ≥ ${NEEDED_GB} GB)."
+        # Add space freed by any pre-planned deletions to the layout budget.
+        local _pre_freed=0 _prp _prg
+        for _prp in "${REPLACE_PARTS_ALL[@]+"${REPLACE_PARTS_ALL[@]}"}"; do
+            _prg=$(( $(blockdev --getsize64 "$_prp" 2>/dev/null || echo 0) / 1073741824 ))
+            _pre_freed=$(( _pre_freed + _prg ))
+        done
+        FREE_GB_AVAIL=$(( free_gb + _pre_freed ))
         blank
         return 0
     fi
@@ -574,15 +598,18 @@ function _check_and_plan_space() {
     if (( total_avail_gb >= NEEDED_GB && ${#_DISPOSABLE_PARTS[@]} > 0 )); then
         ok "Enough space by removing unneeded partitions."
         blank
-        local dp
-        for dp in "${_DISPOSABLE_PARTS[@]}"; do
-            probe_os_from_part "$dp" || true
-            local _ds
-            _ds=$(lsblk -dno SIZE "$dp" 2>/dev/null || echo "?")
-            warn "  Will DELETE: ${dp}  (${_ds})  — ${PROBE_OS_RESULT:-partition}"
-        done
-        REPLACE_PART="${_DISPOSABLE_PARTS[0]}"
-        REPLACE_PARTS_ALL=("${_DISPOSABLE_PARTS[@]}")
+        # Only auto-assign if not already set by explicit user decisions above.
+        if [[ ${#REPLACE_PARTS_ALL[@]} -eq 0 ]]; then
+            local dp
+            for dp in "${_DISPOSABLE_PARTS[@]}"; do
+                probe_os_from_part "$dp" || true
+                local _ds
+                _ds=$(lsblk -dno SIZE "$dp" 2>/dev/null || echo "?")
+                warn "  Will DELETE: ${dp}  (${_ds})  — ${PROBE_OS_RESULT:-partition}"
+            done
+            REPLACE_PART="${_DISPOSABLE_PARTS[0]}"
+            REPLACE_PARTS_ALL=("${_DISPOSABLE_PARTS[@]}")
+        fi
         FREE_GB_AVAIL=$total_avail_gb
         warn "Deletions will occur after installation summary is confirmed."
         blank

@@ -87,6 +87,7 @@ KEYMAP="fr-latin9"
 
 # Software
 KERNEL="linux"
+KERNELS=()                   # all selected kernels; KERNEL always mirrors KERNELS[0]
 BOOTLOADER=""
 SECURE_BOOT=false
 DESKTOPS=()

@@ -12,23 +12,23 @@ function verify_installation() {
     section "Post-install verification"
     local issues=0
 
-    # Kernel image
-    local kpath="/mnt/boot/vmlinuz-${KERNEL}"
-    if [[ -f "$kpath" ]]; then
-        ok "Kernel: ${kpath}"
-    else
-        warn "Kernel NOT found: ${kpath}"
-        issues=$(( issues + 1 ))
-    fi
+    # Kernel image(s) — check every entry in KERNELS
+    local _kcheck_list=("${KERNELS[@]+"${KERNELS[@]}"}")
+    if [[ ${#_kcheck_list[@]} -eq 0 ]]; then _kcheck_list=("$KERNEL"); fi
 
-    # initramfs
-    local ipath="/mnt/boot/initramfs-${KERNEL}.img"
-    local fpath="/mnt/boot/initramfs-${KERNEL}-fallback.img"
-    if [[ -f "$ipath" ]]; then ok "initramfs: ${ipath}"
-    else warn "initramfs NOT found"; issues=$(( issues + 1 )); fi
+    local _kn
+    for _kn in "${_kcheck_list[@]}"; do
+        local kpath="/mnt/boot/vmlinuz-${_kn}"
+        if [[ -f "$kpath" ]]; then ok "Kernel: ${kpath}"
+        else warn "Kernel NOT found: ${kpath}"; issues=$(( issues + 1 )); fi
 
-    if [[ -f "$fpath" ]]; then ok "Fallback initramfs: present"
-    else warn "Fallback initramfs: missing"; issues=$(( issues + 1 )); fi
+        local ipath="/mnt/boot/initramfs-${_kn}.img"
+        local fpath="/mnt/boot/initramfs-${_kn}-fallback.img"
+        if [[ -f "$ipath" ]]; then ok "initramfs [${_kn}]: present"
+        else warn "initramfs NOT found [${_kn}]"; issues=$(( issues + 1 )); fi
+        if [[ -f "$fpath" ]]; then ok "Fallback initramfs [${_kn}]: present"
+        else warn "Fallback initramfs [${_kn}]: missing"; issues=$(( issues + 1 )); fi
+    done
 
     # Bootloader
     if [[ "$FIRMWARE_MODE" == "uefi" ]]; then
@@ -44,6 +44,11 @@ function verify_installation() {
         elif [[ "$BOOTLOADER" == "systemd-boot" ]]; then
             if [[ -f "/mnt/boot/loader/entries/arch.conf" ]]; then
                 ok "systemd-boot: arch.conf present"
+                # Bonus: count all generated entries
+                local _sd_entry_count
+                _sd_entry_count=$(find /mnt/boot/loader/entries -name '*.conf' \
+                    ! -name '*-fallback.conf' 2>/dev/null | wc -l)
+                ok "systemd-boot: ${_sd_entry_count} kernel entry file(s) found"
             else
                 warn "systemd-boot: arch.conf missing"
                 issues=$(( issues + 1 ))

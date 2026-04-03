@@ -8,8 +8,16 @@ function _build_package_list() {
     # inputs: all software globals / outputs: package string
     local pkgs=""
 
-    # Core
-    pkgs+="base base-devel ${KERNEL} ${KERNEL}-headers linux-firmware"
+    # Core — install every selected kernel + its headers
+    pkgs+="base base-devel linux-firmware"
+    local _k
+    for _k in "${KERNELS[@]+"${KERNELS[@]}"}"; do
+        pkgs+=" ${_k} ${_k}-headers"
+    done
+    # Fallback: if KERNELS is empty (old config loaded), use KERNEL
+    if [[ ${#KERNELS[@]} -eq 0 && -n "${KERNEL:-}" ]]; then
+        pkgs+=" ${KERNEL} ${KERNEL}-headers"
+    fi
     pkgs+=" dosfstools mtools"
 
     # FS tools

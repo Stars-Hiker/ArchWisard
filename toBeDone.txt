@@ -8,3 +8,4 @@
 
 -I want the script to give the possibility to install git - gum - archlinux-keyring at the begening of the script as they are required further on
 
+- chroot failed at line 359 -cmd:systemctl enable "${DM_SERVICE}"

@@ -69,8 +69,14 @@ function _layout_preview() {
         lines+=("$(_clr "$GUM_C_INFO"   "  EFI       ${EFI_SIZE_MB} MB   FAT32")")
     fi
 
-    if [[ "$SWAP_TYPE" == "partition" ]]; then
+    if [[ "$SWAP_TYPE" == "zram" && "${SWAP_SIZE:-}" == *% ]]; then
+        lines+=("$(_clr "$GUM_C_INFO" "  zram      ${SWAP_SIZE} of RAM   [in-memory, zstd]")")
+    elif [[ "$SWAP_TYPE" == "partition" ]]; then
         lines+=("$(_clr "$GUM_C_WARN"   "  swap      ${SWAP_SIZE} GB    linux-swap")")
+    elif [[ "$SWAP_TYPE" == "file" ]]; then
+        lines+=("$(_clr "$GUM_C_INFO"   "  swapfile  ${SWAP_SIZE} GB")")
+    elif [[ "$SWAP_TYPE" == "zram" ]]; then
+        lines+=("$(_clr "$GUM_C_INFO"   "  zram      ${SWAP_SIZE} GB   [in-memory, zstd]")")
     fi
 
     local root_disp="${ROOT_SIZE} GB"
@@ -397,7 +403,62 @@ function partition_wizard() {
             SWAP_SIZE="" ;;
         *)
             SWAP_TYPE="zram"
-            SWAP_SIZE="8" ;;
+
+            # Compute suggestion from detected RAM
+            local _zram_ram_kb _zram_ram_gb _zram_pct_def _zram_gb_def
+            _zram_ram_kb=$(awk '/^MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+            _zram_ram_gb=$(( _zram_ram_kb / 1048576 ))
+            _zram_pct_def=50
+            _zram_gb_def=$(( _zram_ram_gb / 2 ))
+            if (( _zram_gb_def > 8 )); then _zram_gb_def=8; fi
+            if (( _zram_gb_def < 1 )); then _zram_gb_def=1; fi
+
+            if [[ "${NO_GUM:-false}" == false ]]; then
+                gum style \
+                    --border        rounded \
+                    --border-foreground "$GUM_C_DIM" \
+                    --padding       "0 2" \
+                    --width         "$GUM_WIDTH" \
+                    "$(_clr "$GUM_C_INFO" "  RAM detected:    ${_zram_ram_gb} GB")" \
+                    "$(_clr "$GUM_C_OK"   "  Suggested:       ${_zram_pct_def}% of RAM  (~${_zram_gb_def} GB)")" \
+                    "$(_clr "$GUM_C_DIM"  "  zram lives in RAM — no disk space consumed.")" \
+                    2>/dev/null || true
+            else
+                info "RAM: ${_zram_ram_gb} GB  |  Suggested zram: ${_zram_pct_def}% (~${_zram_gb_def} GB)"
+            fi
+            blank
+
+            local _zram_mode_sel
+            _zram_mode_sel=$(choose_one \
+                "Percentage of RAM  (recommended)" \
+                "Percentage of RAM  (recommended)" \
+                "Fixed size in GB" \
+                "$BACK")
+            if [[ "$_zram_mode_sel" == "$BACK" ]]; then return 1; fi
+
+            if [[ "$_zram_mode_sel" == "Percentage"* ]]; then
+                local _pct_val
+                while true; do
+                    _pct_val=$(input_gum \
+                        "Percentage of RAM to use for zram  [1–100]" \
+                        "${_zram_pct_def}")
+                    if [[ "$_pct_val" == "$BACK" ]]; then return 1; fi
+                    if [[ "$_pct_val" =~ ^[0-9]+$ ]] \
+                       && (( _pct_val >= 1 && _pct_val <= 100 )); then
+                        break
+                    fi
+                    warn "Enter a whole number between 1 and 100."
+                done
+                SWAP_SIZE="${_pct_val}%"
+            else
+                local _zram_max_gb=$(( _zram_ram_gb > 32 ? 32 : _zram_ram_gb ))
+                if (( _zram_max_gb < 1 )); then _zram_max_gb=8; fi
+                _ask_gb "Fixed zram size in GB" "$_zram_gb_def" "$_zram_max_gb" 1
+                if [[ "$GB_RESULT" == "$BACK" ]]; then return 1; fi
+                SWAP_SIZE="$GB_RESULT"
+            fi
+            ok "zram: ${SWAP_SIZE}"
+            ;;
     esac
     ok "Swap: ${SWAP_TYPE}${SWAP_SIZE:+  (${SWAP_SIZE} GB)}"
 

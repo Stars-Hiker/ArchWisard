@@ -44,7 +44,7 @@ function _step_done() {
         4) [[ -n "${ROOT_SIZE:-}" ]] ;;
         5) [[ -n "${HOSTNAME:-}" && -n "${LOCALE:-}" && -n "${TIMEZONE:-}" ]] ;;
         6) [[ -n "${USERNAME:-}" && -n "${USER_PASSWORD:-}" ]] ;;
-        7) [[ -n "${KERNEL:-}" && -n "${BOOTLOADER:-}" ]] ;;
+        7) [[ -n "${KERNEL:-}" && "${#KERNELS[@]}" -gt 0 && -n "${BOOTLOADER:-}" ]] ;;
         8) [[ "${#DESKTOPS[@]}" -gt 0 || -n "${FIREWALL:-}" ]] ;;
         *) return 1 ;;
     esac
@@ -120,7 +120,7 @@ function _step_summary() {
             fi ;;
         7)
             if _step_done 7; then
-                s="${KERNEL}  boot:${BOOTLOADER}"
+                s="${KERNELS[*]:-${KERNEL}}  boot:${BOOTLOADER}"
                 if [[ "${SECURE_BOOT:-false}" == true ]]; then s+="  [SecureBoot]"; fi
                 printf '%s' "$s"
             else
@@ -634,6 +634,7 @@ LOCALE="${LOCALE:-en_US.UTF-8}"
 KEYMAP="${KEYMAP:-us}"
 
 KERNEL="${KERNEL:-linux}"
+KERNELS=(${KERNELS[@]+"${KERNELS[@]}"})
 BOOTLOADER="${BOOTLOADER:-}"
 SECURE_BOOT=${SECURE_BOOT:-false}
 DESKTOPS=(${DESKTOPS[@]+"${DESKTOPS[@]}"})
@@ -711,6 +712,10 @@ function load_config() {
     # Passed — source for real
     # shellcheck source=/dev/null
     source "$cfg"
+    # Backward compat: old saved configs have only KERNEL, not KERNELS.
+    if [[ ${#KERNELS[@]} -eq 0 && -n "${KERNEL:-}" ]]; then
+        KERNELS=("$KERNEL")
+    fi
     ok "Config loaded: ${cfg}"
     blank
 }

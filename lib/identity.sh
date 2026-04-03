@@ -150,21 +150,36 @@ function configure_users() {
 # =============================================================================
 
 function choose_kernel_bootloader() {
-    # inputs: DUAL_BOOT FIRMWARE_MODE / side-effects: KERNEL BOOTLOADER SECURE_BOOT
+    # inputs: DUAL_BOOT FIRMWARE_MODE / side-effects: KERNEL KERNELS BOOTLOADER SECURE_BOOT
     section "Kernel"
     blank
+    info "Space to toggle, Enter to confirm. Multiple kernels can be installed."
+    blank
 
-    local k_sel
-    k_sel=$(choose_one \
+    local k_options=(
+        "linux          — latest stable  (recommended)"
+        "linux-lts      — long-term support, slower updates"
+        "linux-zen      — desktop responsiveness optimised"
+        "linux-hardened — security-hardened, extra mitigations"
+    )
+
+    local selected_k_lines
+    mapfile -t selected_k_lines < <(choose_many \
         "linux          — latest stable  (recommended)" \
-        "linux          — latest stable  (recommended)" \
-        "linux-lts      — long-term support, slower updates" \
-        "linux-zen      — desktop responsiveness optimised" \
-        "linux-hardened — security-hardened, extra mitigations" \
-        "$BACK")
-    if [[ "$k_sel" == "$BACK" ]]; then return 1; fi
-    KERNEL="${k_sel%% *}"
-    ok "Kernel: ${KERNEL}"
+        "${k_options[@]}")
+
+    KERNELS=()
+    if [[ ${#selected_k_lines[@]} -eq 0 ]]; then
+        warn "No kernel selected — defaulting to linux."
+        KERNELS=("linux")
+    else
+        local _kl
+        for _kl in "${selected_k_lines[@]}"; do
+            KERNELS+=("${_kl%% *}")
+        done
+    fi
+    KERNEL="${KERNELS[0]}"
+    ok "Kernel(s): ${KERNELS[*]}"
     blank
 
     section "Bootloader"
@@ -442,7 +457,13 @@ function show_summary() {
     if [[ "${SEP_HOME:-false}" == true ]]; then
         rows+=("  Home       : $(_clr "$GUM_C_INFO" "${HOME_SIZE} GB  [${HOME_FS}]")")
     fi
-    rows+=("  Swap       : $(_clr "$GUM_C_INFO" "${SWAP_TYPE}${SWAP_SIZE:+  (${SWAP_SIZE} GB)}")")
+    if [[ "$SWAP_TYPE" == "zram" && "${SWAP_SIZE:-}" == *% ]]; then
+        rows+=("  Swap       : $(_clr "$GUM_C_INFO" "zram  (${SWAP_SIZE} of RAM)")")
+    elif [[ -n "${SWAP_SIZE:-}" ]]; then
+        rows+=("  Swap       : $(_clr "$GUM_C_INFO" "${SWAP_TYPE}  (${SWAP_SIZE} GB)")")
+    else
+        rows+=("  Swap       : $(_clr "$GUM_C_INFO" "${SWAP_TYPE}")")
+    fi
     rows+=("  LUKS2      : $(_clr "$GUM_C_INFO" "${USE_LUKS}")")
     rows+=("  Multi-boot : $(_clr "$GUM_C_INFO" "${DUAL_BOOT}")")
 
@@ -484,7 +505,7 @@ function show_summary() {
 
     # ── Software ──────────────────────────────────────────────────────────────
     rows+=("" "$(_clr "$GUM_C_ACCENT" "  SOFTWARE")")
-    rows+=("  Kernel     : $(_clr "$GUM_C_INFO" "${KERNEL}")")
+    rows+=("  Kernel     : $(_clr "$GUM_C_INFO" "${KERNELS[*]:-${KERNEL}}")")
     rows+=("  Bootloader : $(_clr "$GUM_C_INFO" "${BOOTLOADER}")")
     rows+=("  Secure Boot: $(_clr "$GUM_C_INFO" "${SECURE_BOOT}")")
     rows+=("  Desktop(s) : $(_clr "$GUM_C_INFO" "${DESKTOPS[*]:-none}")")

@@ -216,6 +216,7 @@ ROOT_PASSWORD="${ROOT_PASSWORD}"
 
 # ── Kernel & bootloader ───────────────────────────────────────────────────────
 KERNEL="${KERNEL}"
+KERNELS=(${KERNELS[@]+"${KERNELS[@]}"})
 BOOTLOADER="${BOOTLOADER}"
 SECURE_BOOT=${SECURE_BOOT:-false}
 BOOTLOADER_PKGS="${BOOTLOADER_PKGS}"

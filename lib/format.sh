@@ -71,6 +71,12 @@ function create_subvolumes() {
     section "btrfs subvolumes"
 
     local root_dev="${ROOT_PART_MAPPED:-$ROOT_PART}"
+
+    # Guard: clean up any stale /mnt mounts from a previous failed attempt.
+    # Without this, btrfs subvolume create fails with "file exists" if the
+    # freshly-formatted device was already mounted here.
+    umount -R /mnt 2>/dev/null || true
+
     run "mount ${root_dev} /mnt"
 
     local sv

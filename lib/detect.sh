@@ -111,14 +111,23 @@ function probe_os_from_part() {
 function _refresh_partitions() {
     # inputs: disk_path / side-effects: kernel partition table updated
     local disk="$1" attempt
+    udevadm settle --timeout=10 2>/dev/null || true
     for attempt in 1 2 3; do
         if partprobe "$disk" 2>/dev/null; then
+            udevadm settle --timeout=5 2>/dev/null || true
             sleep 1; ok "Kernel partition table updated"; return 0
         fi
-        warn "partprobe attempt ${attempt}/3 — retrying in 2s…"; sleep 2
+        warn "partprobe attempt ${attempt}/3 — retrying in 2s…"
+        udevadm settle --timeout=5 2>/dev/null || true
+        sleep 2
     done
     if partx -u "$disk" 2>/dev/null; then
+        udevadm settle --timeout=5 2>/dev/null || true
         sleep 1; ok "Kernel partition table updated via partx"; return 0
+    fi
+    if blockdev --rereadpt "$disk" 2>/dev/null; then
+        udevadm settle --timeout=5 2>/dev/null || true
+        sleep 1; ok "Kernel partition table updated via blockdev"; return 0
     fi
     udevadm settle 2>/dev/null || true; sleep 3
     warn "Could not confirm kernel saw partition changes — continuing."
@@ -259,6 +268,33 @@ function sanity_checks() {
     else
         ok "Internet OK"
     fi
+
+    # Required prerequisites (gum, git, archlinux-keyring)
+    # Run AFTER network is confirmed so pacman can reach mirrors.
+    run_spin "Checking prerequisites…" "sleep 0.1"
+    local _missing_prereqs=()
+    command -v gum &>/dev/null || _missing_prereqs+=("gum")
+    command -v git &>/dev/null || _missing_prereqs+=("git")
+
+    if [[ ${#_missing_prereqs[@]} -gt 0 ]]; then
+        blank
+        warn "Missing recommended tools: ${_missing_prereqs[*]}"
+    fi
+    blank
+    if confirm_gum "Install / refresh prerequisites? (gum  git  archlinux-keyring)"; then
+        run_spin "Syncing package databases…"   "pacman -Sy  --noconfirm"
+        run_spin "Installing prerequisites…" \
+            "pacman -S --noconfirm --needed gum git archlinux-keyring"
+        # If gum was just installed, activate it for the rest of the wizard.
+        if command -v gum &>/dev/null && [[ "${NO_GUM:-false}" == true ]]; then
+            NO_GUM=false
+            ok "gum activated — switching to rich UI"
+        fi
+        ok "Prerequisites ready"
+    elif [[ ${#_missing_prereqs[@]} -gt 0 ]]; then
+        warn "Proceeding without: ${_missing_prereqs[*]} — some features may degrade."
+    fi
+    blank
 
     # Required tools
     run_spin "Checking required tools…" "sleep 0.1"
